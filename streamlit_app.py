@@ -452,11 +452,12 @@ def page_marketing():
                 rule, action = SEGMENT_INFO[name]
                 n = int(stats["Customers"].get(name, 0))
                 share = stats["Revenue"].get(name, 0.0) / total_rev
+                share_txt = f"{share:.0%}" if share >= 0.005 else "<1%"
                 with col.container(border=True):
                     st.markdown(
                         f"<span style='color:{SEGMENT_COLORS[name]}'>●</span> **{name}** · "
                         f"{n:,} customers ({n / len(rfm):.0%})  \n"
-                        f"{share:.0%} of revenue · :gray[{rule}]\n\n{action}",
+                        f"{share_txt} of revenue · :gray[{rule}]\n\n{action}",
                         unsafe_allow_html=True)
 
         # --- Revenue by segment ---

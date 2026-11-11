@@ -28,7 +28,6 @@ st.markdown("""
 # ---------------------------------------------------------------
 # 1) DATA LOADING
 # ---------------------------------------------------------------
-@st.cache_data
 def load_data():
     return pd.read_parquet("B2B_Transaction_Data.parquet")
 
@@ -36,7 +35,6 @@ def load_data():
 # ---------------------------------------------------------------
 # 2) DATA PREPROCESSING
 # ---------------------------------------------------------------
-@st.cache_data
 def preprocess(raw):
     df = raw.copy()
     report = {"Raw rows": len(df)}
@@ -70,8 +68,16 @@ def preprocess(raw):
     return df.reset_index(drop=True), report
 
 
-raw = load_data()
-df, report = preprocess(raw)
+@st.cache_resource(show_spinner="Loading and cleaning the data...")
+def get_data():
+    """Load and clean the data once. The same objects are shared by all users,
+    which keeps memory low on Streamlit Cloud (cache_data would make a copy per run)."""
+    raw = load_data()
+    df, report = preprocess(raw)
+    return raw, df, report
+
+
+raw, df, report = get_data()
 
 # ---------------------------------------------------------------
 # CHART HELPERS
@@ -176,7 +182,7 @@ def build_forecast(data, metric, weeks, level=95, end_date=None, model_name="Lin
     def features(dates):
         X = pd.DataFrame({"trend": (dates - start).days}, index=dates)
         for d in range(1, 7):                          # Monday is the baseline
-            X[f"dow_{d}"] = (dates.dayofweek == d).astype(int)
+            X[f"dow_{d}"] = (dates.day_of_week == d).astype(int)
         return X
 
     X, y = features(daily.index), daily.values.astype(float)
@@ -200,12 +206,12 @@ def build_forecast(data, metric, weeks, level=95, end_date=None, model_name="Lin
 
     # 3) Weekly totals for the chart
     weekly = pd.concat([daily, future_pred]).resample("W").sum()
-    if daily.index[0].dayofweek != 0:                  # drop incomplete first week
+    if daily.index[0].day_of_week != 0:                  # drop incomplete first week
         weekly = weekly.iloc[1:]
     last_actual_week = daily.resample("W").sum().index[-1]
     history = weekly.loc[:last_actual_week]
     fc = weekly.loc[last_actual_week:].to_frame("value")
-    if future[-1].dayofweek != 6:                      # drop incomplete last forecast week
+    if future[-1].day_of_week != 6:                      # drop incomplete last forecast week
         fc = fc.iloc[:-1]
     band = Z_SCORES[level] * resid_sd * np.sqrt(7)     # confidence interval for a weekly total
     fc["lower"] = (fc["value"] - band).clip(lower=0)
@@ -251,9 +257,10 @@ ATTRIBUTES = {   # column: (description, attribute type from the course)
 }
 
 
-@st.cache_data
-def describe_raw(raw):
-    """Attribute table of the raw dataset."""
+@st.cache_resource
+def describe_raw(_raw):
+    """Attribute table of the raw dataset (computed once; '_' skips hashing the large DataFrame)."""
+    raw = _raw
     return pd.DataFrame({
         "Attribute": raw.columns,
         "Description": [ATTRIBUTES.get(c, ("", ""))[0] for c in raw.columns],
@@ -793,7 +800,7 @@ nav = st.navigation({
         st.Page(page_sales, url_path="sales", title="Sales Overview", icon="📈"),
         st.Page(page_forecast, url_path="forecast", title="Sales Forecast", icon="🔮"),
         st.Page(page_marketing, url_path="marketing", title="Customer Segmentation", icon="🎯"),
-        st.Page(page_supply, url_path="supply-chain", title="ABC & Best Sellers", icon="🚚"),
+        st.Page(page_supply, url_path="supply-chain", title="ABC & Best Sellers", icon="📦"),
     ],
 })
 nav.run()

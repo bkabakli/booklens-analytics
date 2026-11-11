@@ -476,11 +476,14 @@ def page_marketing():
         fig = px.scatter(rfm, x="Recency", y="Frequency", size="Monetary", color="Segment",
                          color_discrete_map=SEGMENT_COLORS, category_orders={"Segment": names},
                          hover_name="CustomerID", size_max=50)
-        fig.update_traces(hovertemplate="<b>%{hovertext}</b><br>Days since last order: %{x}"
+        fig.update_traces(marker=dict(sizemin=4, line=dict(width=0)),
+                          hovertemplate="<b>%{hovertext}</b><br>Days since last order: %{x}"
                                         "<br>Invoices: %{y}<br>Revenue: ₺%{marker.size:,.0f}<extra></extra>")
         fig.update_layout(xaxis_title="Days since last order", yaxis_title="Number of invoices",
                           height=550, legend=dict(title=None, orientation="h", x=0, y=1.02, yanchor="bottom"))
         st.plotly_chart(fig)
+
+        st.subheader("Top 10 Customers")
         top = rfm.nlargest(10, "Monetary")[["CustomerID", "Segment", "Recency", "Frequency", "Monetary"]]
         st.dataframe(top, hide_index=True, column_config={
             "Recency": st.column_config.NumberColumn("Days Since Last Order", alignment="center"),

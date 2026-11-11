@@ -131,6 +131,16 @@ def rfm_segment(r, f):
         return "Hibernating"
     return "Needs Attention"
 
+SEGMENT_INFO = {   # segment: (rule, recommended action) - order is used in cards and charts
+    "Champions":       ("R ≥ 4 and F ≥ 4", "Bought recently and often. Reward them with loyalty discounts and early access to new titles."),
+    "Loyal":           ("F ≥ 3", "Order regularly. Grow their basket with bundles and book series."),
+    "Promising":       ("R ≥ 4 and F ≤ 2", "Recent but infrequent. Recommend related titles to build a buying habit."),
+    "Needs Attention": ("R = 3 and F ≤ 2", "Average and slipping. Send targeted promotions before they go quiet."),
+    "At Risk":         ("R ≤ 2 and F ≥ 4", "Used to order often but stopped. Contact them personally with a win-back offer."),
+    "Hibernating":     ("R ≤ 2 and F ≤ 2", "Inactive and low value. Use low-cost reminders only."),
+}
+SEGMENT_COLORS = {"Champions": "#7c3aed", "Loyal": "#3b82f6", "Promising": "#14b8a6",
+                  "Needs Attention": "#f59e0b", "At Risk": "#ef4444", "Hibernating": "#94a3b8"}
 
 def build_rfm(data):
     """Recency, Frequency, Monetary values and scores per customer."""
@@ -422,16 +432,54 @@ def page_marketing():
                 f"₺{risk['Revenue'].iloc[0]:,.0f}. Consider a re-engagement campaign."
             )
 
-        st.plotly_chart(ranked_bar(seg, "Segment", "Revenue by Customer Segment"))
+        # --- RFM explanation and segment cards ---
+        st.subheader("RFM Segmentation",
+                     help="Each customer gets three scores from 1 to 5 by comparing them with the other "
+                          "customers in the current selection (quintiles): R = how recently they ordered "
+                          "(5 = most recent), F = number of invoices (5 = most frequent), M = total revenue. "
+                          "Segments are assigned from the R and F scores; revenue is shown for context.")
+        st.markdown(
+            "Not every customer needs the same treatment. **RFM analysis** groups customers by "
+            "**Recency** (days since last order), **Frequency** (number of invoices) and **Monetary** "
+            "value (total revenue), so the marketing team can decide whom to reward, whom to win back "
+            "and where to spend its budget.")
 
-        fig = px.scatter(rfm, x="Recency", y="Frequency", size="Monetary", color="Segment",
-                         hover_name="CustomerID", size_max=50,
-                         title="Customer Map: Recency vs Frequency")
-        fig.update_layout(xaxis_title="Days since last order", yaxis_title="Number of invoices",
-                          height=550)
+        stats = seg.set_index("Segment")
+        total_rev = rfm["Monetary"].sum()
+        names = list(SEGMENT_INFO)
+        for row in (names[:3], names[3:]):
+            for col, name in zip(st.columns(3), row):
+                rule, action = SEGMENT_INFO[name]
+                n = int(stats["Customers"].get(name, 0))
+                share = stats["Revenue"].get(name, 0.0) / total_rev
+                with col.container(border=True):
+                    st.markdown(
+                        f"<span style='color:{SEGMENT_COLORS[name]}'>●</span> **{name}** · "
+                        f"{n:,} customers ({n / len(rfm):.0%})  \n"
+                        f"{share:.0%} of revenue · :gray[{rule}]\n\n{action}",
+                        unsafe_allow_html=True)
+
+        # --- Revenue by segment ---
+        fig = px.bar(seg, x="Revenue", y="Segment", orientation="h", color="Segment",
+                     color_discrete_map=SEGMENT_COLORS, title="Revenue by Customer Segment")
+        fig.update_layout(showlegend=False, xaxis_title="Revenue (₺)", yaxis_title=None,
+                          yaxis={"categoryorder": "total ascending"})
+        fig.update_traces(hovertemplate="₺%{x:,.0f}<extra></extra>")
         st.plotly_chart(fig)
 
-        st.subheader("Top 10 Customers")
+        # --- Customer map ---
+        st.subheader("Customer Map",
+                     help="Each bubble is one customer. Further left = ordered more recently, higher = "
+                          "orders more often, bigger bubble = more revenue. Champions sit in the top-left "
+                          "corner; At Risk customers are frequent buyers drifting to the right.")
+        fig = px.scatter(rfm, x="Recency", y="Frequency", size="Monetary", color="Segment",
+                         color_discrete_map=SEGMENT_COLORS, category_orders={"Segment": names},
+                         hover_name="CustomerID", size_max=50)
+        fig.update_traces(hovertemplate="<b>%{hovertext}</b><br>Days since last order: %{x}"
+                                        "<br>Invoices: %{y}<br>Revenue: ₺%{marker.size:,.0f}<extra></extra>")
+        fig.update_layout(xaxis_title="Days since last order", yaxis_title="Number of invoices",
+                          height=550, legend=dict(title=None, orientation="h", x=0, y=1.02, yanchor="bottom"))
+        st.plotly_chart(fig)
         top = rfm.nlargest(10, "Monetary")[["CustomerID", "Segment", "Recency", "Frequency", "Monetary"]]
         st.dataframe(top, hide_index=True, column_config={
             "Recency": st.column_config.NumberColumn("Days Since Last Order", alignment="center"),

@@ -291,7 +291,7 @@ def filter_bar():
                                 default=saved["cities"], placeholder="All")
         categories = c3.multiselect("Category", sorted(df["Category"].unique()),
                                     default=saved["categories"], placeholder="All")
-        if c4.form_submit_button("🔍 Apply", type="primary"):
+        if c4.form_submit_button("Apply", icon=":material/search:", type="primary", width="stretch"):
             saved.update(months=months, cities=cities, categories=categories)
 
     start_no = MONTHS.index(saved["months"][0]) + 1
@@ -458,22 +458,49 @@ def page_supply():
         f"can be ordered on demand."
     )
 
-    # --- Pareto curve ---
-    fig = px.line(abc, x="SKUShare", y="CumShare", color="Class",
-                  color_discrete_map=ABC_COLORS,
-                  title="ABC Analysis – Cumulative Revenue Share")
-    fig.add_hline(y=0.80, line_dash="dash")
-    fig.add_hline(y=0.95, line_dash="dot")
-    fig.update_layout(xaxis_title="Share of products", yaxis_title="Cumulative revenue share",
-                      xaxis_tickformat=".0%", yaxis_tickformat=".0%", height=450)
+    # --- ABC analysis ---
+    st.subheader("ABC Analysis",
+                 help="How to read the chart: products are sorted from highest to lowest revenue along "
+                      "the x-axis, and the line shows their cumulative share of revenue. The steeper the "
+                      "curve, the more revenue depends on a small number of titles.")
+    st.markdown(
+        "A distributor carries tens of thousands of titles but cannot give each one the same attention. "
+        "**ABC analysis**, based on the Pareto (80/20) principle, ranks products by revenue and splits "
+        "them into three classes, so purchasing and warehouse teams know where to focus.")
+
+    class_info = {
+        "A": ("Top 80% of revenue", "Never let these run out of stock; review weekly."),
+        "B": ("Next 15% of revenue", "Keep in stock and review regularly."),
+        "C": ("Last 5% of revenue", "Order on demand; candidates for delisting."),
+    }
+    for col, (cls, (share, action)) in zip(st.columns(3), class_info.items()):
+        n = int((abc["Class"] == cls).sum())
+        with col.container(border=True):
+            st.markdown(f"**Class {cls}** · {n:,} SKUs ({n / len(abc):.1%} of products)\n\n"
+                        f"{share}  \n:gray[{action}]")
+
+    abc["Class label"] = abc["Class"].map({c: f"{c} – {v[0].lower()}" for c, v in class_info.items()})
+    fig = px.line(abc, x="SKUShare", y="CumShare", color="Class label",
+                  color_discrete_map={f"{c} – {v[0].lower()}": ABC_COLORS[c] for c, v in class_info.items()},
+                  title="Cumulative Revenue Share by Product")
+    fig.add_hline(y=0.80, line_dash="dash", annotation_text="80% of revenue",
+                  annotation_position="bottom right")
+    fig.add_hline(y=0.95, line_dash="dot", annotation_text="95% of revenue",
+                  annotation_position="bottom right")
+    fig.update_layout(xaxis_title="Share of products (sorted by revenue)",
+                      yaxis_title="Cumulative revenue share",
+                      xaxis_tickformat=".0%", yaxis_tickformat=".0%", height=450,
+                      legend=dict(title=None, orientation="h", x=0, y=1.02, yanchor="bottom"))
     fig.update_traces(hovertemplate="Top %{x:.1%} of products → %{y:.1%} of revenue<extra></extra>")
     st.plotly_chart(fig)
 
     # --- Best sellers by units ---
-    top_units = abc.nlargest(10, "Units").assign(Product=lambda d: d["Description"].str.slice(0, 45))
+    top_units = abc.nlargest(10, "Units").copy()
+    top_units["Product"] = top_units["Description"].str.slice(0, 45)
+    same_name = top_units["Product"].duplicated(keep=False)        # same title, different barcode (edition)
+    top_units.loc[same_name, "Product"] += " · " + top_units.loc[same_name, "StockCode"].str[-4:]
     st.plotly_chart(ranked_bar(top_units, "Product", "Top 10 Best-Selling Products (Units)",
                                value="Units", prefix=""))
-
     # --- Monthly demand ---
     monthly_units = f.groupby("Month", as_index=False)["Quantity"].sum()
     fig = px.line(monthly_units, x="Month", y="Quantity", markers=True,
@@ -680,22 +707,25 @@ def page_data():
             "- `StockCode` was stored as a number → converted to **text**, because a barcode is an identifier, "
             "not a quantity to sum or average.")
 
-    with st.expander(f"2️⃣  Duplicate records — {dup_n:,} rows removed"):
+    with st.expander("2️⃣  Duplicate records"):
         st.markdown(
+            f"**Result:** {dup_n:,} rows removed ({dup_n / raw_n:.2%} of the raw data)\n\n"
             "Rows identical in every column (same invoice, product, quantity and price) were treated as "
             "**duplicate entries** and removed, as they would inflate revenue and quantity figures.")
 
-    with st.expander(f"3️⃣  Noisy data — {inv_n} rows removed"):
+    with st.expander("3️⃣  Noisy data"):
         st.markdown(
+            f"**Result:** {inv_n:,} rows removed ({inv_n / raw_n:.3%} of the raw data)\n\n"
             "Rows with **missing or zero quantity**, **zero or negative net price**, and "
-            "**prices below ₺1** were removed. Inspection showed that the zero-quantity rows were "
-            "return/correction records (net price equal to the negative of the unit price), and prices "
-            "such as ₺0.0001 are clearly data-entry errors, not real sales.")
-    with st.expander(f"4️⃣  Missing values — {city_fill:,} cities, {cat_fill} categories filled"):
+            "**prices below ₺1** were removed. Zero-quantity rows are return/correction records "
+            "(net price equal to the negative of the unit price), and near-zero prices are "
+            "data-entry errors, not real sales.")
+
+    with st.expander("4️⃣  Missing values"):
         st.markdown(
+            f"**Result:** {city_fill:,} cities and {cat_fill:,} categories filled\n\n"
             "Missing `City` and `Category` values were filled with the **global constant 'Unknown'** "
             "instead of dropping the rows, because their quantity and revenue information is still valid.")
-
     with st.expander("5️⃣  Feature construction"):
         st.markdown(
             "- `Revenue` = `Quantity` × `NetPrice`\n"

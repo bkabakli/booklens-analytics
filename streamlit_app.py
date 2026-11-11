@@ -453,7 +453,7 @@ def page_marketing():
                 n = int(stats["Customers"].get(name, 0))
                 share = stats["Revenue"].get(name, 0.0) / total_rev
                 share_txt = f"{share:.0%}" if share >= 0.005 else "<1%"
-                with col.container(border=True):
+                with col.container(border=True, height="stretch"):
                     st.markdown(
                         f"<span style='color:{SEGMENT_COLORS[name]}'>●</span> **{name}** · "
                         f"{n:,} customers ({n / len(rfm):.0%})  \n"
@@ -527,7 +527,7 @@ def page_supply():
     }
     for col, (cls, (share, action)) in zip(st.columns(3), class_info.items()):
         n = int((abc["Class"] == cls).sum())
-        with col.container(border=True):
+        with col.container(border=True, height="stretch"):
             st.markdown(f"**Class {cls}** · {n:,} SKUs ({n / len(abc):.1%} of products)\n\n"
                         f"{share}  \n:gray[{action}]")
 
@@ -861,15 +861,28 @@ def page_data():
 # ---------------------------------------------------------------
 # 6) NAVIGATION
 # ---------------------------------------------------------------
-st.markdown("""
+banner_stats = [
+    f"{len(raw) / 1000:.0f}K transactions",
+    f"{raw['CustomerID'].nunique():,} customers",
+    f"{raw['StockCode'].nunique():,} titles",
+    f"{raw['City'].nunique()} cities",
+    "2020",
+]
+chips = "".join(
+    f"<span style='background: rgba(255,255,255,0.18); padding: 3px 10px; border-radius: 999px; "
+    f"margin-right: 6px; font-size: 0.8rem; color: white;'>{s}</span>"
+    for s in banner_stats)
+
+st.markdown(f"""
 <div style="background: linear-gradient(120deg, #7c3aed 0%, #38bdf8 100%);
             padding: 26px 32px; border-radius: 14px; margin-bottom: 12px;">
   <div style="font-size: 2.2rem; font-weight: 700; color: white; line-height: 1.2;">
     📚 BookLens Analytics
   </div>
-  <div style="font-size: 1rem; color: rgba(255, 255, 255, 0.9); margin-top: 6px;">
-    Decision support for B2B book distribution · Sales, marketing and supply chain insights from 2020 transactions
+  <div style="font-size: 1.1rem; color: rgba(255, 255, 255, 0.92); margin: 6px 0 14px;">
+    See what sells, who buys, and what to stock next.
   </div>
+  <div>{chips}</div>
 </div>
 """, unsafe_allow_html=True)
 
